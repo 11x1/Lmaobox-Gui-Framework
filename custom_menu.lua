@@ -518,6 +518,13 @@ local function wrap_index( tbl, idx )
     return tbl[ idx ]
 end
 
+local function bind( fn, ... )
+    local args = { ... }
+    return function( )
+        fn( table.unpack( args ) )
+    end
+end
+
 local max_iterations = 3
 local function render_wrapping_gradient( rect_pos, rect_size, gradient_start, max_length, width, side, col )
     local start_direction = 0
@@ -595,7 +602,7 @@ local function render_wrapping_gradient( rect_pos, rect_size, gradient_start, ma
         local length = gradient_segments[ i ]
         local perc = length / max_length
         
-        local alpha_taken = math.floor( perc * 255 )
+        local alpha_taken = math.floor( perc * col.a )
 
         table.insert(
             gradient_alphas,
@@ -608,7 +615,7 @@ local function render_wrapping_gradient( rect_pos, rect_size, gradient_start, ma
 
     local render_start_pos = gradient_start
 
-    local alpha = 255
+    local alpha = col.a
     for i = 1, #gradient_segments do
         local direction = wrap_index( left_directions, start_direction )
         direction = direction * index_direction
@@ -1062,6 +1069,8 @@ function controls.new_colorpicker( control, gui_link_str, default_color )
 
         if is_m1_pressed and self.hovering then
             self.open = not self.open
+        elseif is_m1_pressed and not self.hovering and not self.in_colorpicker then
+            self.open = false
         end
     end
 
@@ -1863,6 +1872,9 @@ function controls.new_combo( subtab, group, name, default_selected, gui_link_str
         hovering = false
     }
 
+    combo.colorpickers = { }
+    combo.active_colorpicker = false
+
     if combo.gui then
         local gui_val = gui.GetValue( combo.gui )
 
@@ -1876,6 +1888,17 @@ function controls.new_combo( subtab, group, name, default_selected, gui_link_str
 
     function combo:get( )
         return self.selected, self.items[ self.selected ]
+    end
+
+    function combo:add_color_picker( gui_link, default_color )
+        local picker = controls.new_colorpicker( self, gui_link, default_color )
+
+        table.insert(
+            self.colorpickers,
+            picker
+        )
+
+        return picker
     end
 
     function combo:get_height( )
@@ -1987,11 +2010,34 @@ function controls.new_combo( subtab, group, name, default_selected, gui_link_str
                 self.state and accent_color_light or self.visuals.hovering and global_colors.hovered_text or global_colors.disabled_text,
                 self.name
             )
+
+             -- render colorpickers
+             local hovered_picker = nil
+             self.active_colorpicker = nil
+             for i = 1, #self.colorpickers do
+                 local picker = self.colorpickers[ i ]
+ 
+                 local x_offset = ( i - 1 ) * ( picker.size.menu.x + 5 )
+ 
+                 picker:render( pos, width - x_offset, should_handle )
+ 
+                 if not hovered_picker and picker:is_hovering( ) then
+                     hovered_picker = picker
+                 end
+                 
+                 if picker.open then
+                     self.active_colorpicker = picker
+                 end
+             end
+ 
+            --  if hovered_picker and hovered_picker.open then
+            --      self.active_colorpicker = hovered_picker
+            --  end
         end
 
         local combo_start = text_pos + vector( 0, math.floor( font_height.controls * 1.2 ) )
         if combo_start.y >= self.subtab.tab.menu.pos.y then
-            if should_handle then
+            if should_handle and not self.active_colorpicker then
                 self:handle( combo_start, self.box_size.x )
             end
 
@@ -2841,7 +2887,7 @@ function controls.create_menu( )
                             math.floor( ( bg_size.x + bg_size.y ) / 2 ),
                             1,
                             'left',
-                            accent_color_light
+                            accent_color
                         )
 
                         render_wrapping_gradient(
@@ -2851,7 +2897,7 @@ function controls.create_menu( )
                             math.floor( ( bg_size.x + bg_size.y ) / 2 ),
                             1,
                             'right',
-                            accent_color_light
+                            accent_color
                         )
                     end
 
@@ -3055,14 +3101,199 @@ local element = {
     },
     antiaim = { }, -- dynamically set up later
     esp = {
+        override_esp = subtab.esp.esp:add_checkbox( 'custom esp', 'override lmaobox esp' ),
+
+        override_chams = subtab.esp.chams:add_checkbox( 'custom chams', 'enable custom chams' ),
+        subtab.esp.chams:add_text( 'custom chams', 'This will reset your chams' ),
+        subtab.esp.chams:add_text( 'custom chams', 'settings for default lmaobox!' ),
+
+        override_local_chams = subtab.esp.chams:add_checkbox( 'localplayer', 'enable chams' ),
+        local_model_material = subtab.esp.chams:add_combo( 'localplayer', 'model material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        local_model_material_overlay = subtab.esp.chams:add_combo( 'localplayer', 'model overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        local_arms_material = subtab.esp.chams:add_combo( 'localplayer', 'arms material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        local_arms_material_overlay = subtab.esp.chams:add_combo( 'localplayer', 'arms overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        local_weapon_material = subtab.esp.chams:add_combo( 'localplayer', 'weapon material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        local_weapon_material_overlay = subtab.esp.chams:add_combo( 'localplayer', 'weapon overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+
+        override_team_chams = subtab.esp.chams:add_checkbox( 'team', 'enable chams' ),
+        team_model_material = subtab.esp.chams:add_combo( 'team', 'model material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        team_model_material_overlay = subtab.esp.chams:add_combo( 'team', 'model overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        team_arms_material = subtab.esp.chams:add_combo( 'team', 'arms material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        team_arms_material_overlay = subtab.esp.chams:add_combo( 'team', 'arms overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        team_weapon_material = subtab.esp.chams:add_combo( 'team', 'weapon material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        team_weapon_material_overlay = subtab.esp.chams:add_combo( 'team', 'weapon overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+
+        override_friends_chams = subtab.esp.chams:add_checkbox( 'friends', 'enable chams' ),
+        friends_model_material = subtab.esp.chams:add_combo( 'friends', 'model material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        friends_model_material_overlay = subtab.esp.chams:add_combo( 'friends', 'model overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        friends_arms_material = subtab.esp.chams:add_combo( 'friends', 'arms material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        friends_arms_material_overlay = subtab.esp.chams:add_combo( 'friends', 'arms overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        friends_weapon_material = subtab.esp.chams:add_combo( 'friends', 'weapon material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        friends_weapon_material_overlay = subtab.esp.chams:add_combo( 'friends', 'weapon overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+
+        override_enemy_chams = subtab.esp.chams:add_checkbox( 'enemies', 'enable chams' ),
+        enemy_model_material = subtab.esp.chams:add_combo( 'enemies', 'model material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        enemy_model_material_overlay = subtab.esp.chams:add_combo( 'enemies', 'model overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        enemy_arms_material = subtab.esp.chams:add_combo( 'enemies', 'arms material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        enemy_arms_material_overlay = subtab.esp.chams:add_combo( 'enemies', 'arms overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        enemy_weapon_material = subtab.esp.chams:add_combo( 'enemies', 'weapon material', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+        enemy_weapon_material_overlay = subtab.esp.chams:add_combo( 'enemies', 'weapon overlay', 1, nil, 'none', 'flat', 'custom ubercharge', 'fresnel', 'bubble' ),
+
+
+        override_glow = subtab.esp.glow:add_checkbox( 'custom glow', 'override glow' ),
+
+        projectile_trajectory = subtab.esp.world:add_checkbox( 'general', 'projectile trajectory', true ),
+        projectile_entities = subtab.esp.world:add_multicombo( 'general', 'predict projectiles for...', 'localplayer', 'friends', 'team', 'enemies' ),
+        projectile_local_color_text = subtab.esp.world:add_text( 'general', 'localplayer color' ),
+        projectile_friends_color_text = subtab.esp.world:add_text( 'general', 'friends color' ),
+        projectile_team_color_text = subtab.esp.world:add_text( 'general', 'team color' ),
+        projectile_enemies_color_text = subtab.esp.world:add_text( 'general', 'enemies color' ),
+
+        projectile_camera = subtab.esp.world:add_checkbox( 'general', 'projectile land camera' )
 
     },
     misc = {
         menu_color = subtab.misc.general:add_text( 'general', 'menu color' ),
         antiaim_visualiser = subtab.misc.general:add_checkbox( 'general', 'antiaim lines', true ),
-        btn = subtab.misc.general:add_button( 'general', 'BUTTON!!!!!!!' )
+        btn = subtab.misc.general:add_button( 'general', 'BUTTON!!!!!!!' ),
+
+        bomber_helper = subtab.misc.helpers:add_checkbox( 'bomber helper', 'enable', true ),
+        bomber_sources = subtab.misc.helpers:add_multicombo( 'bomber helper', 'enabled configs', 'funny 2fort', 'funny spots', 'test' ),
+
+        bomber_enable_config_builder = subtab.misc.helpers:add_checkbox( 'bomber config', 'lock config editing', true )
     }
 }
+
+local esp_visibility = { }
+
+-- esp set_visible stuff
+esp_visibility.groups = { 'local', 'team', 'friends', 'enemy' }
+esp_visibility.fields = {
+    'override_%s_chams',
+    '%s_model_material',
+    '%s_model_material_overlay',
+    '%s_arms_material',
+    '%s_arms_material_overlay',
+    '%s_weapon_material',
+    '%s_weapon_material_overlay',
+}
+
+esp_visibility.colors = {
+    {
+        color( 100, 255, 100 ),
+        color( 100, 100, 255 ),
+        color( 255, 100, 100 ),
+        color( 255, 255, 255, 100 ),
+        color( 255, 100, 100 ),
+        color( 255, 255, 255, 100 )
+    }, {
+        color( 100, 255, 100 ),
+        color( 100, 100, 255 ),
+        color( 255, 100, 100 ),
+        color( 255, 255, 255, 100 ),
+        color( 255, 100, 100 ),
+        color( 255, 255, 255, 100 )
+    }, {
+        color( 100, 255, 100 ),
+        color( 100, 100, 255 ),
+        color( 255, 100, 100 ),
+        color( 255, 255, 255, 100 ),
+        color( 255, 100, 100 ),
+        color( 255, 255, 255, 100 )
+    }, {
+        color( 100, 255, 100 ),
+        color( 100, 100, 255 ),
+        color( 255, 100, 100 ),
+        color( 255, 255, 255, 100 ),
+        color( 255, 100, 100 ),
+        color( 255, 255, 255, 100 )
+    }
+}
+
+function esp_visibility.global( global_check, name )
+    local globally_enabled = global_check:get( )
+
+    for i = 2, #esp_visibility.fields do
+        local other = true
+
+        if i % 2 == 1 then
+            local _, selected_name = element.esp[ string.format( esp_visibility.fields[ i - 1 ], name ) ]:get( )
+
+            other = selected_name ~= 'none'
+        end
+
+        element.esp[ string.format( esp_visibility.fields[ i ], name ) ]:set_visible( globally_enabled and other )
+    end
+end
+
+for i = 1, #esp_visibility.groups do
+    local group_name = esp_visibility.groups[ i ]
+
+    local global_enable_elem = element.esp[ string.format( esp_visibility.fields[ 1 ], group_name ) ]
+    global_enable_elem:add_callback( bind( esp_visibility.global, global_enable_elem, group_name ) )
+
+    -- i cba to make every one of these a separate fn so they get the global enable fn
+    for j = 2, #esp_visibility.fields do
+        local elem_name = string.format( esp_visibility.fields[ j ], group_name )
+        local bs_elem = element.esp[ elem_name ]
+        if j % 2 == 0 then
+            bs_elem:add_callback( bind( esp_visibility.global, bs_elem, group_name ) )
+        end
+
+        element.esp[ elem_name .. '_color' ] = bs_elem:add_color_picker( nil, esp_visibility.colors[ i ][ j ] )
+
+        if j <= 3 then
+            element.esp[ elem_name .. '_color_invisible' ] = bs_elem:add_color_picker( nil, esp_visibility.colors[ i ][ j + 1 ] )
+        end
+    end
+
+    esp_visibility.global( global_enable_elem, group_name )
+end
+
+function esp_visibility.override_global( override_chams_obj )
+    local enable_chams = override_chams_obj:get( )
+
+    for i = 1, #esp_visibility.groups do
+        local override_subtab = element.esp[ esp_visibility.fields[ 1 ]:format( esp_visibility.groups[ i ] ) ]
+        override_subtab:set_visible( enable_chams )
+        esp_visibility.global( override_chams_obj, esp_visibility.groups[ i ] )
+
+        if enable_chams then
+            esp_visibility.global( override_subtab, esp_visibility.groups[ i ] )
+        end
+    end
+end
+
+element.esp.override_chams:add_callback( esp_visibility.override_global )
+esp_visibility.override_global( element.esp.override_chams )
+
+
+local world_visibility = { }
+function world_visibility.projectile_global( _ )
+    local global_enable = element.esp.projectile_trajectory:get( )
+
+    element.esp.projectile_entities:set_visible( global_enable )
+    element.esp.projectile_camera:set_visible( global_enable )
+
+    local is_localplayer_selected = element.esp.projectile_entities:get( 'localplayer' )
+    local is_friends_selected = element.esp.projectile_entities:get( 'friends' )
+    local is_team_selected = element.esp.projectile_entities:get( 'team' )
+    local is_enemies_selected = element.esp.projectile_entities:get( 'enemies' )
+
+    element.esp.projectile_local_color_text:set_visible( global_enable and is_localplayer_selected )
+    element.esp.projectile_friends_color_text:set_visible( global_enable and is_friends_selected )
+    element.esp.projectile_team_color_text:set_visible( global_enable and is_team_selected )
+    element.esp.projectile_enemies_color_text:set_visible( global_enable and is_enemies_selected )
+end
+
+element.esp.projectile_local_color = element.esp.projectile_local_color_text:add_color_picker( nil, color( 200, 200, 255 ) )
+element.esp.projectile_friends_color = element.esp.projectile_friends_color_text:add_color_picker( nil, color( 200, 255, 100 ) )
+element.esp.projectile_team_color = element.esp.projectile_team_color_text:add_color_picker( nil, color( 200, 200, 200, 100 ) )
+element.esp.projectile_enemies_color = element.esp.projectile_enemies_color_text:add_color_picker( nil, color( 255, 180, 150 ) )
+
+element.esp.projectile_trajectory:add_callback( world_visibility.projectile_global )
+element.esp.projectile_entities:add_callback( world_visibility.projectile_global )
+world_visibility.projectile_global( element.esp.projectile_trajectory )
 
 local antiaim_subtabs = { 'generic','scout', 'soldier', 'pyro', 'demo', 'heavy', 'engineer', 'medic', 'sniper', 'spy' }
 local group_order = { 'general', 'real angles', 'fakelag', 'fake angles' }
