@@ -442,6 +442,59 @@ function input.is_button_pressed( key )
     return keydata.pressed
 end
 
+local writable_keys = {
+    [ '0' ]                = KEY_0,
+    [ '1' ]                = KEY_1,
+    [ '2' ]                = KEY_2,
+    [ '3' ]                = KEY_3,
+    [ '4' ]                = KEY_4,
+    [ '5' ]                = KEY_5,
+    [ '6' ]                = KEY_6,
+    [ '7' ]                = KEY_7,
+    [ '8' ]                = KEY_8,
+    [ '9' ]                = KEY_9,
+    [ 'A' ]                = KEY_A,
+    [ 'B' ]                = KEY_B,
+    [ 'C' ]                = KEY_C,
+    [ 'D' ]                = KEY_D,
+    [ 'E' ]                = KEY_E,
+    [ 'F' ]                = KEY_F,
+    [ 'G' ]                = KEY_G,
+    [ 'H' ]                = KEY_H,
+    [ 'I' ]                = KEY_I,
+    [ 'J' ]                = KEY_J,
+    [ 'K' ]                = KEY_K,
+    [ 'L' ]                = KEY_L,
+    [ 'M' ]                = KEY_M,
+    [ 'N' ]                = KEY_N,
+    [ 'O' ]                = KEY_O,
+    [ 'P' ]                = KEY_P,
+    [ 'Q' ]                = KEY_Q,
+    [ 'R' ]                = KEY_R,
+    [ 'S' ]                = KEY_S,
+    [ 'T' ]                = KEY_T,
+    [ 'U' ]                = KEY_U,
+    [ 'V' ]                = KEY_V,
+    [ 'W' ]                = KEY_W,
+    [ 'X' ]                = KEY_X,
+    [ 'Y' ]                = KEY_Y,
+    [ 'Z' ]                = KEY_Z,
+    [ '-' ]            = KEY_MINUS,
+    [ '=' ]            = KEY_EQUAL,
+    [ ' ' ]            = KEY_SPACE,
+    [ 'ENTER' ]            = KEY_ENTER,
+    [ 'BACKSPACE' ]        = KEY_BACKSPACE,
+}
+function input.get_writable_key( )
+    local is_upper = input.is_key_down( KEY_LSHIFT ) or input.is_key_down( KEY_RSHIFT )
+
+    for k, v in pairs( writable_keys ) do
+        if input.is_button_pressed( v ) then
+            return is_upper and k:upper( ) or k:lower( )
+        end
+    end
+end
+
 function input.update_keys( )
     local mouse = input.get_mouse_pos( )
     local x, y = table.unpack( mouse )
@@ -1590,6 +1643,10 @@ function controls.new_text( subtab, group, name )
         return true
     end
 
+    function title:set( new_name )
+        self.name = new_name
+    end
+
     function title:add_color_picker( gui_link, default_color )
         local picker = controls.new_colorpicker( self, gui_link, default_color )
 
@@ -1654,6 +1711,135 @@ function controls.new_text( subtab, group, name )
     end
 
     return title
+end
+
+function controls.new_text_area( subtab, group, name )
+    local text_area = { }
+
+    text_area.group = group
+    text_area.name = name
+
+    text_area.visible = true
+
+    text_area.value = ''
+
+    text_area.subtab = subtab
+
+    text_area.visuals = {
+        hovering = false
+    }
+
+    text_area.bg_size = vector( font_height.controls )
+
+    text_area.is_input_mode = false
+
+    text_area.callback_fn = nil
+
+    function text_area:set_callback( fn )
+        self.callback_fn = fn
+    end
+
+
+    function text_area:get( )
+        return self.value
+    end
+
+    function text_area:set( new )
+        self.value = new
+    end
+
+    function text_area:get_height( )
+        return font_height.controls + 5
+    end
+
+    function text_area:set_visible( new_state )
+        self.visible = new_state
+    end
+
+    function text_area:handle( pos, width )
+        local in_bounds = is_in_bounds( pos, vector( width, font_height.controls ) )
+
+        self.visuals.hovering = in_bounds
+
+        local is_m1_clicked = input.is_button_pressed( MOUSE_LEFT )
+
+        if in_bounds and is_m1_clicked then
+            self.is_input_mode = not self.is_input_mode
+        elseif not in_bounds and is_m1_clicked then
+            self.is_input_mode = false
+        end
+
+        if self.is_input_mode then
+            local key = input.get_writable_key( )
+
+            if key then -- ! hell yeah nested if statements, i could do if this then return x3 BUT i might need to add code after this so wont work (also gotos are bad)
+                if #key == 1 then
+                    self.value = self.value .. key
+
+                    if self.callback_fn then
+                        self.callback_fn( self, key )
+                    end
+                else
+                    key = key:upper( )
+                    if key == 'ENTER' then
+                        self.is_input_mode = false
+
+                        if self.callback_fn then
+                            self.callback_fn( self, key )
+                        end
+                    elseif key == 'BACKSPACE' then
+                        self.value = string.sub( self.value, 0, #self.value - 1 )
+
+                        if self.callback_fn then
+                            self.callback_fn( self, key )
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    function text_area:render( pos, width, should_handle )
+        self.bg_size.x = width - self.subtab.tab.menu.padding.group.x
+
+        if pos.y >= self.subtab.tab.menu.pos.y then
+            local title_start = pos + vector( math.floor( self.subtab.tab.menu.padding.group.x / 2 ), 0)
+            
+            renderer.rect_filled(
+                title_start,
+                self.bg_size,
+                global_colors.checkbox
+            )
+
+            renderer.use_font( controls_font )
+            title_start.x = title_start.x + 5
+            if #self.value == 0 then
+                renderer.text(
+                    title_start,
+                    self.is_input_mode and global_colors.disabled_text or global_colors.highlight_hover,
+                    self.name
+                )
+            else
+                local val_text = self.value
+
+                if self.is_input_mode then
+                    val_text = val_text .. ( globals.RealTime( ) % 1 > .5 and '' or '_' )
+                end
+
+                renderer.text(
+                    title_start,
+                    self.is_input_mode and global_colors.hovered_text  or self.visuals.hovering and global_colors.disabled_text or global_colors.highlight_hover,
+                    val_text
+                )
+            end
+
+            if should_handle then
+                self:handle( pos, width )
+            end
+        end
+    end
+
+    return text_area
 end
 
 function controls.new_slider( subtab, group, name, default_value, min, max, suffix, gui_link_str, dictionary )
@@ -1865,6 +2051,9 @@ function controls.new_combo( subtab, group, name, default_selected, gui_link_str
     combo.in_open_menu_bounds = false
 
     combo.box_size = vector( math.floor( font_height.controls * 1.2 ) )
+    combo.scrollwheel_size = vector( 5, 0 )
+
+    combo.dropdown_size = vector( )
 
     combo.subtab = subtab
 
@@ -1874,6 +2063,20 @@ function controls.new_combo( subtab, group, name, default_selected, gui_link_str
 
     combo.colorpickers = { }
     combo.active_colorpicker = false
+
+    local max_combo_height = 250
+    combo.dropdown_size.y = #combo.items * combo.item_height
+
+    combo.needs_scrollwheel = combo.dropdown_size.y > max_combo_height
+    combo.max_scroll_amount = 0
+
+    if combo.needs_scrollwheel then
+        combo.max_scroll_amount = combo.dropdown_size.y - max_combo_height
+        combo.dropdown_size.y = max_combo_height
+    end
+
+    combo.scroll_amount = 0
+    combo.scrolling = false
 
     if combo.gui then
         local gui_val = gui.GetValue( combo.gui )
@@ -1889,6 +2092,33 @@ function controls.new_combo( subtab, group, name, default_selected, gui_link_str
     function combo:get( )
         return self.selected, self.items[ self.selected ]
     end
+
+    function combo:set_name( name )
+        for i = 1, #self.items do
+            if self.items[ i ] == name then
+                self.selected = i
+            end
+        end
+    end
+
+    function combo:get_items( )
+        return self.items
+    end
+
+    function combo:update( new_items, default_selected )
+        self.selected = default_selected == nil and 1 or default_selected
+        self.items = new_items
+
+        self.dropdown_size.y = #self.items * self.item_height
+        self.needs_scrollwheel = self.dropdown_size.y > max_combo_height
+        self.max_scroll_amount = 0
+
+        if self.needs_scrollwheel then
+            self.max_scroll_amount = self.dropdown_size.y - max_combo_height
+            self.dropdown_size.y = max_combo_height
+        end
+    end
+
 
     function combo:add_color_picker( gui_link, default_color )
         local picker = controls.new_colorpicker( self, gui_link, default_color )
@@ -1950,7 +2180,7 @@ function controls.new_combo( subtab, group, name, default_selected, gui_link_str
         local combo_start = pos + vector( self.subtab.tab.menu.padding.group.x / 2 , math.floor( font_height.controls * 1.2 ) )
 
         local open_menu_start = combo_start + vector( 0, self.box_size.y )
-        local open_menu_size = vector( self.box_size.x, #self.items * self.item_height )
+        local open_menu_size = vector( self.box_size.x, self.dropdown_size.y )
 
         renderer.rect_filled(
             open_menu_start,
@@ -1958,44 +2188,170 @@ function controls.new_combo( subtab, group, name, default_selected, gui_link_str
             self.subtab.tab.menu.colors.tab
         )
 
+        renderer.rect(
+            open_menu_start,
+            open_menu_size,
+            global_colors.black
+        )
+
+        
+        if self.needs_scrollwheel then
+            self:render_scrollwheel( open_menu_start + vector( self.box_size.x - 5, 0 ) )
+        end
+
         local item_idx_hovered
 
         if is_in_bounds( open_menu_start, open_menu_size ) then
             self.in_open_menu_bounds = true
 
-            local y_pos_relative = input.mouse_pos.y - open_menu_start.y
+            local y_pos_relative = input.mouse_pos.y - ( open_menu_start.y - self.scroll_amount  )
             item_idx_hovered = y_pos_relative // self.item_height + 1
 
             if item_idx_hovered > 0 and item_idx_hovered <= #self.items then
+                local rect_start = open_menu_start + vector( 2, ( item_idx_hovered - 1 ) * self.item_height + 2 - self.scroll_amount )
+                local rect_size = vector( self.box_size.x - ( self.needs_scrollwheel and 8 or 4 ), self.item_height - 4 )
+
+                local r, g, b, a_o = color_mt.unpack( global_colors.highlight_hover )
+                local a = a_o
+
+                -- if hovering an appearing element
+                if ( rect_start.y + self.item_height ) > ( open_menu_start.y + open_menu_size.y ) then
+                    local diff = ( rect_start.y + self.item_height ) - ( open_menu_start.y + open_menu_size.y )
+
+                    rect_start.y = open_menu_start.y + open_menu_size.y - self.item_height
+
+                    local pc = 1 - ( diff / self.item_height )
+
+                    a = math.floor( pc * a_o )
+
+                    a = clamp( a, 0, a_o )
+                end
+
                 -- render highlight rect on item
                 renderer.rect_filled(
-                    open_menu_start + vector( 2, ( item_idx_hovered - 1 ) * self.item_height + 2 ),
-                    vector( self.box_size.x - 4, self.item_height - 4 ),
-                    global_colors.highlight_hover
+                    rect_start,
+                    rect_size,
+                    color( r, g, b, a )
                 )
             end
 
             local m1_pressed = input.is_button_pressed( MOUSE_LEFT )
 
-            if item_idx_hovered > 0 and item_idx_hovered <= #self.items and m1_pressed then
+            if item_idx_hovered > 0 and item_idx_hovered <= #self.items and m1_pressed and not self.scrolling then
                 self:click( item_idx_hovered )
+                -- self.scroll_amount = 0 -- dond resed on clos ok? понимаю хyесос ??????? SPASSIIIBA
             end
         else
             self.in_open_menu_bounds = false
         end
 
         -- render item names
-        for i = 1, #self.items do
-            local render_pos = open_menu_start + vector( 5, i * self.item_height - self.name_size.y - 2 )
+        local index_start = 1
+        local max_amount = #self.items
+        local end_amt = index_start + max_amount - 1
+
+        if self.needs_scrollwheel then
+            index_start = self.scroll_amount // self.item_height + 1
+            max_amount = self.dropdown_size.y // self.item_height
+            end_amt = index_start + max_amount
+        end
+
+        for i = index_start, end_amt do
+            local render_pos = open_menu_start + vector( 5, i * self.item_height - self.name_size.y - 2 - self.scroll_amount )
 
             renderer.use_font( self.selected == i and group_title_font or controls_font )
 
+            local r, g, b, _ = color_mt.unpack( self.selected == i and accent_color_light or item_idx_hovered == i and global_colors.hovered_text or global_colors.disabled_text )
+            local a = 255
+
+            if end_amt == i then
+                local diff = ( open_menu_start.y + open_menu_size.y ) - render_pos.y
+
+                a = math.floor( diff / self.item_height * 255 )
+
+                render_pos.y = open_menu_start.y + open_menu_size.y - self.name_size.y - 3
+
+                a = clamp( a, 0, 255 )
+            end
+
             renderer.text(
                 render_pos,
-                self.selected == i and accent_color_light or item_idx_hovered == i and global_colors.hovered_text or global_colors.disabled_text,
+                color( r, g, b, a ),
                 self.items[ i ]
             )
         end
+
+        -- re-render the box and selected (yes this is suboptimal but i really cant rewrite the logic i did 2 weeks ago)
+        if combo_start.y >= self.subtab.tab.menu.pos.y then
+            if combo_start.y + self.box_size.y < self.subtab.tab.menu.pos.y + self.subtab.tab.menu.size.menu.y then
+                renderer.rect_filled(
+                    combo_start,
+                    self.box_size,
+                    global_colors.checkbox
+                )
+
+                -- render selected text
+                renderer.use_font( controls_font )
+                renderer.text(
+                    combo_start + vector( 5, self.box_size.y - self.name_size.y - 2 ),
+                    self.visuals.hovering and global_colors.hovered_text or global_colors.disabled_text,
+                    self.items[ self.selected ]
+                )
+            end
+        end
+    end
+
+    function combo:render_scrollwheel( pos )
+        local scroll_amount_in_pixels = self.scroll_amount
+        local total_scrollwheel_height = self.max_scroll_amount + max_combo_height
+        local scrollwheel_visual_height = self.dropdown_size.y
+        local scrollwheel_height = math.floor( ( self.dropdown_size.y / total_scrollwheel_height ) * scrollwheel_visual_height )
+
+        local scroll_amount_pc = clamp( scroll_amount_in_pixels / self.max_scroll_amount, 0, 1 )
+
+        local visual_offset_y = math.floor( ( scrollwheel_visual_height - scrollwheel_height ) * scroll_amount_pc )
+
+        local head_pos = vector( pos.x, pos.y + visual_offset_y )
+        local head_size = vector( self.scrollwheel_size.x, scrollwheel_height )
+
+        local m1_down = input.is_key_down( MOUSE_LEFT )
+        local in_bounds = is_in_bounds( head_pos, head_size )
+
+        if ( m1_down and in_bounds ) and not self.scrolling then
+            self.scrolling = true
+
+            self.scrollbar_offset = input.mouse_pos - head_pos
+        end
+
+        if self.scrolling then
+            head_pos.y = input.mouse_pos.y - self.scrollbar_offset.y
+
+            head_pos.y = clamp( head_pos.y, pos.y, pos.y + scrollwheel_visual_height - scrollwheel_height )
+
+            local visual_offset_from_top = head_pos.y - pos.y
+
+            local pc_climbed = visual_offset_from_top / ( scrollwheel_visual_height - scrollwheel_height )
+
+            pc_climbed = clamp( pc_climbed, 0, 1 )
+            
+            self.scroll_amount = math.floor( pc_climbed * self.max_scroll_amount )
+        end
+
+        if self.scrolling and not m1_down then
+            self.scrolling = false
+        end
+
+        renderer.rect_filled(
+            pos,
+            vector( self.scrollwheel_size.x, scrollwheel_visual_height ),
+            global_colors.black
+        )
+
+        renderer.rect_filled(
+            head_pos,
+            head_size,
+            color( 255, 100 )
+        )
     end
 
     function combo:render( pos, width, should_handle )
@@ -2310,6 +2666,14 @@ function controls.new_subtab( tab_obj, name )
         subtab.tab.menu:_add_control( button_obj )
 
         return button_obj
+    end
+
+    function subtab:add_text_area( group, name )
+        local text_area_obj = controls.new_text_area( subtab, group, name )
+
+        subtab.tab.menu:_add_control( text_area_obj )
+
+        return text_area_obj
     end
 
     function subtab:add_slider( group, name, default_value, min, max, suffix, gui_link_str, dict )
@@ -3158,11 +3522,176 @@ local element = {
         btn = subtab.misc.general:add_button( 'general', 'BUTTON!!!!!!!' ),
 
         bomber_helper = subtab.misc.helpers:add_checkbox( 'bomber helper', 'enable', true ),
-        bomber_sources = subtab.misc.helpers:add_multicombo( 'bomber helper', 'enabled configs', 'funny 2fort', 'funny spots', 'test' ),
+        bomber_enabled_configs = subtab.misc.helpers:add_multicombo( 'bomber helper', 'enabled configs', 'funny 2fort', 'funny spots', 'test' ),
 
-        bomber_enable_config_builder = subtab.misc.helpers:add_checkbox( 'bomber config', 'lock config editing', true )
+        bomber_disable_config_builder = subtab.misc.helpers:add_checkbox( 'bomber config', 'lock config editing', true ),
+
+        bomber_map = subtab.misc.helpers:add_text( 'bomber config', 'current map: none' ),
+
+        bomber_sources = subtab.misc.helpers:add_combo( 'bomber config', 'map spots', 1, nil, '[+] create new' ),
+        bomber_source_name = subtab.misc.helpers:add_text_area( 'bomber config', 'new name' ),
+
+        bomber_class = subtab.misc.helpers:add_combo( 'bomber config', 'for...', 1, nil, 'scout', 'soldier', 'pyro', 'demoman', 'engineer', 'medic', 'sniper' ),
+        
+        bomber_position = subtab.misc.helpers:add_text( 'bomber config', 'x: 0 y: 0 z: 0' ),
+        bomber_set_position = subtab.misc.helpers:add_button( 'bomber config', 'set position' ),
+        bomber_teleport_position = subtab.misc.helpers:add_button( 'bomber config', 'teleport to position' ),
+
+        bomber_yaw = subtab.misc.helpers:add_slider( 'bomber config', 'view yaw', 0, -180, 180, '°' ),
+        bomber_pitch = subtab.misc.helpers:add_slider( 'bomber config', 'view pitch', 0, -89, 89, '°' ),
+        bomber_demo_charge =  subtab.misc.helpers:add_slider( 'bomber config', 'charge amount', 0, 0, 100, '%' ),
+
+        bomber_delete_spot = subtab.misc.helpers:add_button( 'bomber config', 'delete spot' ),
     }
 }
+
+local bomber_settings = { 
+    map = nil,
+    spots = { }
+}
+
+local bomber_visibility = { }
+function bomber_visibility.lock( )
+    local lock_state = not element.misc.bomber_disable_config_builder:get( )
+
+    local has_map = bomber_settings.map ~= nil
+
+    local spot_index = element.misc.bomber_sources:get( )
+    local is_creating_new = spot_index == 1
+
+    local _, selected_class = element.misc.bomber_class:get( )
+    local is_demo = selected_class == 'demoman'
+
+    element.misc.bomber_map:set_visible( lock_state )
+
+    element.misc.bomber_sources:set_visible( lock_state and has_map )
+    element.misc.bomber_source_name:set_visible( lock_state and has_map )
+
+    element.misc.bomber_class:set_visible( lock_state and has_map )
+
+    element.misc.bomber_position:set_visible( lock_state and has_map and not is_creating_new )
+    element.misc.bomber_set_position:set_visible( lock_state and has_map and not is_creating_new )
+    element.misc.bomber_teleport_position:set_visible( lock_state and has_map and not is_creating_new )
+
+    element.misc.bomber_yaw:set_visible( lock_state and has_map and not is_creating_new )
+    element.misc.bomber_pitch:set_visible( lock_state and has_map and not is_creating_new )
+    element.misc.bomber_demo_charge:set_visible( lock_state and has_map and not is_creating_new and is_demo )
+
+    element.misc.bomber_delete_spot:set_visible( lock_state and has_map and not is_creating_new )
+end
+
+element.misc.bomber_disable_config_builder:add_callback( bomber_visibility.lock )
+bomber_visibility.lock( )
+
+function bomber_visibility.on_new_config( self, key )
+    if key == 'ENTER' then
+        local prev_items = element.misc.bomber_sources:get_items( )
+
+        local new_item = self:get( )
+        table.insert( prev_items, 2, new_item )
+
+        local new_items = prev_items
+
+        element.misc.bomber_sources:update( new_items, 2 )
+
+        local _, for_class = element.misc.bomber_class:get( )
+
+        bomber_settings.spots[ new_item ] = {
+            pos = vector( ),
+            ang = vector( ),
+
+            class = for_class,
+            demo_chg = 0,
+        }
+
+        element.misc.bomber_position:set( 'x: 0 y: 0 z: 0' )
+        element.misc.bomber_yaw:set( 0 )
+        element.misc.bomber_pitch:set( 0 )
+        element.misc.bomber_demo_charge:set( 0 )
+
+        element.misc.bomber_position:set_visible( true )
+        element.misc.bomber_set_position:set_visible( true )
+        element.misc.bomber_teleport_position:set_visible( true )
+    
+        element.misc.bomber_yaw:set_visible( true )
+        element.misc.bomber_pitch:set_visible( true )
+        element.misc.bomber_demo_charge:set_visible( for_class == 'demoman' )
+
+        element.misc.bomber_delete_spot:set_visible( true )
+    end
+end
+element.misc.bomber_source_name:set_callback( bomber_visibility.on_new_config )
+
+function bomber_visibility.on_config_switch( self )
+    local idx, cfg_name = self:get( )
+
+    local new_cfg = idx == 1
+
+    if new_cfg then
+        element.misc.bomber_position:set_visible( false )
+        element.misc.bomber_set_position:set_visible( false )
+        element.misc.bomber_teleport_position:set_visible( false )
+        element.misc.bomber_yaw:set_visible( false )
+        element.misc.bomber_pitch:set_visible( false )
+        element.misc.bomber_demo_charge:set_visible( false )
+        element.misc.bomber_delete_spot:set_visible( false )
+
+        element.misc.bomber_source_name:set( '' )
+        element.misc.bomber_class:set_name( 'scout' )
+        element.misc.bomber_position:set( 'x: 0 y: 0 z: 0' )
+        element.misc.bomber_yaw:set( 0 )
+        element.misc.bomber_pitch:set( 0 )
+        element.misc.bomber_demo_charge:set( 0 )
+    else
+        local config_data = bomber_settings.spots[ cfg_name ]
+
+        element.misc.bomber_position:set_visible( true )
+        element.misc.bomber_set_position:set_visible( true )
+        element.misc.bomber_teleport_position:set_visible( true )
+    
+        element.misc.bomber_yaw:set_visible( true )
+        element.misc.bomber_pitch:set_visible( true )
+        element.misc.bomber_demo_charge:set_visible( config_data.class == 'demoman' )
+
+        element.misc.bomber_delete_spot:set_visible( true )
+
+        element.misc.bomber_class:set_name( config_data.class )
+        element.misc.bomber_position:set( string.format( 'x: %.2f y: %.2f z: %.2f', config_data.pos:unpack( ) ) )
+        element.misc.bomber_yaw:set( config_data.ang.y )
+        element.misc.bomber_pitch:set( config_data.ang.x )
+        element.misc.bomber_demo_charge:set( config_data.demo_chg )
+    end
+end
+element.misc.bomber_sources:add_callback( bomber_visibility.on_config_switch )
+
+function bomber_visibility.on_set_position( )
+    local idx, cfg_name = element.misc.bomber_sources:get( )
+
+    if idx == 1 then return end -- new cfg
+
+    local config_data = bomber_settings.spots[ cfg_name ]
+    local x, y, z = entities.GetLocalPlayer( ):GetAbsOrigin( ):Unpack( )
+    config_data.pos.x = x
+    config_data.pos.y = y
+    config_data.pos.z = z
+
+    element.misc.bomber_position:set( 
+        ( 'x: %.2f y: %.2f z: %.2f' ):format( config_data.pos:unpack( ) )
+    )
+end
+element.misc.bomber_set_position:add_callback( bomber_visibility.on_set_position )
+
+function bomber_visibility.on_teleport_position( )
+    local idx, cfg_name = element.misc.bomber_sources:get( )
+
+    if idx == 1 then return end -- new cfg
+
+    local config_data = bomber_settings.spots[ cfg_name ]
+    
+    client.Command( 'sv_cheats 1', true )
+    client.Command( ( 'setpos %.2f %.2f %.2f' ):format( config_data.pos:unpack( ) ), true )
+end
+element.misc.bomber_teleport_position:add_callback( bomber_visibility.on_teleport_position )
 
 local esp_visibility = { }
 
@@ -3820,7 +4349,7 @@ do
     -- end )
 end
 
-local features = { antiaim = { } }
+local features = { antiaim = { }, bomber = { } }
 
 local m_iClass_to_class = {
     'scout',
@@ -4083,13 +4612,27 @@ function features.antiaim.visualize( )
     renderer.line3d( start, start + end_pos_fake, color( 255, 0, 0 ) )
 end
 
+local bomber_map_last_update = globals.RealTime( )
+function features.bomber.update_map( )
+    bomber_settings.map = engine.GetMapName( )
+    bomber_map_last_update = globals.RealTime( )
+
+    element.misc.bomber_map:set( string.format( 'current map: %s', bomber_settings.map ) )
+end
+
 callbacks.Register( 'CreateMove', function( cmd )
     features.antiaim.main( cmd )
+    features.bomber.update_map( )
 end )
 
 callbacks.Register("Draw", function( )
     -- script features
     features.antiaim.visualize( )
+
+    if bomber_settings.map and bomber_map_last_update + 1 < globals.RealTime( ) then
+        bomber_settings.map = nil
+        element.misc.bomber_map:set( 'current map: none' )
+    end
 
     -- menu stuff
     input.update_keys( )
